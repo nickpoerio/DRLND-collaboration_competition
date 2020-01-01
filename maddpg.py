@@ -37,15 +37,15 @@ class Agent():
         self.full_action_size = action_size*n_agents
         self.seed = random.seed(random_seed)
         self.num_agents = n_agents
-        
+        print(self.full_state_size)
         # Actor Network (w/ Target Network)
         self.actor_local = Actor(state_size, action_size, random_seed).to(device)
         self.actor_target = Actor(state_size, action_size, random_seed).to(device)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
 
         # Critic Network (w/ Target Network)
-        self.critic_local = Critic(full_state_size, full_action_size, random_seed).to(device)
-        self.critic_target = Critic(full_state_size, full_action_size, random_seed).to(device)
+        self.critic_local = Critic(self.full_state_size, self.full_action_size, random_seed).to(device)
+        self.critic_target = Critic(self.full_state_size, self.full_action_size, random_seed).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
         # Noise process
@@ -54,7 +54,7 @@ class Agent():
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, random_seed)
     
-    def step(self, states, actions, rewards, next_states, done):
+    def step(self, states, actions, reward, next_states, done):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward tuple for all agents to a shared replay buffer before sampling
         self.memory.add(states, actions, reward, next_states, done)
@@ -101,7 +101,7 @@ class Agent():
         # Get predicted next-state actions and Q values from target models
         actions_next = np.zeros((self.num_agents, self.action_size)) #initialize actions to 0
         for i, next_state in enumerate(next_states):
-            actions_next[i,:] = self.actor_target(next_states[i])
+            actions_next[i,:] = self.actor_target(next_states[i]).cpu().data.numpy() #to be modified: add another for??
         actions_next = torch.from_numpy().float(actions_next).to(device)
         Q_targets_next = self.critic_target(next_states, actions_next)
         # Compute Q targets for current states (y_i)
