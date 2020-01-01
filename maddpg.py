@@ -37,7 +37,6 @@ class Agent():
         self.full_action_size = action_size*n_agents
         self.seed = random.seed(random_seed)
         self.num_agents = n_agents
-        print(self.full_state_size)
         # Actor Network (w/ Target Network)
         self.actor_local = Actor(state_size, action_size, random_seed).to(device)
         self.actor_target = Actor(state_size, action_size, random_seed).to(device)
@@ -93,17 +92,20 @@ class Agent():
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples 
             gamma (float): discount factor
         """
-
         
         states, actions, rewards, next_states, dones = experiences
-
+        
+        nag = self.num_agents
+        asize = self.action_size
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
-        actions_next = np.zeros((self.num_agents, self.action_size)) #initialize actions to 0
-        for i, next_state in enumerate(next_states):
-            actions_next[i,:] = self.actor_target(next_states[i]).cpu().data.numpy() #to be modified: add another for??
+        actions_next = np.zeros((BATCH_SIZE, asize*nag)) #initialize actions to 0
+        for i in range(nag):
+            actions_next[:,i*asize:(i+1)*asize] = self.actor_target(next_states[i::nag,:]).cpu().data.numpy()
         actions_next = torch.from_numpy().float(actions_next).to(device)
-        Q_targets_next = self.critic_target(next_states, actions_next)
+        # ------
+        #next_states = torch.cat((next_states[<------------
+        Q_targets_next = self.critic_target(next_states.reshape(BATCH_SIZE,self.full_state_size), actions_next)
         # Compute Q targets for current states (y_i)
         Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
         # Compute critic loss
@@ -117,8 +119,10 @@ class Agent():
 
         # ---------------------------- update actor ---------------------------- #
         # Compute actor loss
-        actions_pred = self.actor_local(states)
-        actor_loss = -self.critic_local(states, actions_pred).mean()
+        actions_pred = np.zeros((BATCH_SIZE, asize*nag)) #initialize actions to 0
+        for i in range(self.num_agents):
+            actions_pred[:,i*asize:(i+1)*asize] = self.actor_local(states[i::nag,:]).cpu().data.numpy()
+        actor_loss = -self.critic_local(states.reshape(BATCH_SIZE,self.full_state_size), actions_pred).mean()
         # Minimize the loss
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
