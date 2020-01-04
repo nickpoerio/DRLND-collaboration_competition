@@ -1,16 +1,12 @@
 import numpy as np
-import random
 import copy
-from collections import namedtuple, deque
-
-from model import Actor, Critic
+import random
+from maddpg_model import Actor, Critic
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-BUFFER_SIZE = int(1e6)  # replay buffer size
-BATCH_SIZE = 256        # minibatch size
 GAMMA = 0.95            # discount factor
 TAU = 5e-3              # for soft update of target parameters
 LR_ACTOR = 1e-3         # learning rate of the actor 
@@ -41,33 +37,24 @@ class Agent():
         self.actor_local = Actor(state_size, action_size, random_seed).to(device)
         self.actor_target = Actor(state_size, action_size, random_seed).to(device)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
-
         # Critic Network (w/ Target Network)
         self.critic_local = Critic(self.full_state_size, self.full_action_size, random_seed).to(device)
         self.critic_target = Critic(self.full_state_size, self.full_action_size, random_seed).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
-
+        
+        # make sure that critic and actor have the same weights at start
+        self.hard_update(self.critic_local, self.critic_target)
+        self.hard_update(self.actor_local, self.actor_target) 
+        
         # Noise process
         self.noise = OUNoise(action_size, random_seed)
 
-        # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, random_seed)
-    
-    def step(self, states, actions, reward, next_states, done):
-        """Save experience in replay memory, and use random sample from buffer to learn."""
-        # Save experience / reward tuple for all agents to a shared replay buffer before sampling
-        self.memory.add(states, actions, reward, next_states, done)
-
-
-    def act(self, states, add_noise=True):
+    def act(self, state, add_noise=True):
         """Returns actions for given state as per current policy."""
-        states = torch.from_numpy(states).float().to(device)
-        actions = np.zeros((self.num_agents, self.action_size)) #initialize actions to 0
+        state = torch.from_numpy(state).float().to(device)
         self.actor_local.eval()
         with torch.no_grad():
-            for i, state in enumerate(states):
-                # list of actions sequentially populated
-                actions[i, :] = self.actor_local(state).cpu().data.numpy()
+            actions = self.actor_local(state).cpu().data.numpy()
         self.actor_local.train()
         if add_noise:
             actions += self.noise.sample()
@@ -76,7 +63,7 @@ class Agent():
     def reset(self):
         self.noise.reset()
 
-    def learn(self):
+    def learn(self,agent_id, experiences, actions_next, actions_pred):
         """Update policy and value parameters using given batch of experience tuples.
         Q_targets = r + γ * critic_target(next_state, actor_target(next_state))
         where:
@@ -88,29 +75,16 @@ class Agent():
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples 
             gamma (float): discount factor
         """
-        # Learn, if enough samples are available in memory
-        if len(self.memory) > BATCH_SIZE:
-            experiences = self.memory.sample()
-        else:
-            return
             
         states, actions, rewards, next_states, dones = experiences
         
-        nag = self.num_agents
-        asize = self.action_size
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
-        actions_next = np.zeros((BATCH_SIZE, asize*nag)) #initialize actions to 0
-        for i in range(nag):
-            actions_next[:,i*asize:(i+1)*asize] = self.actor_target(next_states[i::nag,:]).cpu().data.numpy()
-        actions_next = torch.from_numpy(actions_next).float().to(device)
-        # ------
-        #next_states = torch.cat((next_states[<------------
-        Q_targets_next = self.critic_target(next_states.reshape(BATCH_SIZE,self.full_state_size), actions_next)
+        Q_targets_next = self.critic_target(next_states.reshape(-1,self.full_state_size), actions_next)
         # Compute Q targets for current states (y_i)
-        Q_targets = rewards + (GAMMA * Q_targets_next * (1 - dones))
+        Q_targets = rewards[:,agent_id] + (GAMMA * Q_targets_next * (1 - dones[:,agent_id]))
         # Compute critic loss
-        Q_expected = self.critic_local(states.reshape(BATCH_SIZE,self.full_state_size), actions.reshape(BATCH_SIZE,self.full_action_size))
+        Q_expected = self.critic_local(states.reshape(-1,self.full_state_size), actions.reshape(-1,self.full_action_size))
         critic_loss = F.mse_loss(Q_expected, Q_targets)
         # Minimize the loss
         self.critic_optimizer.zero_grad()
@@ -120,11 +94,7 @@ class Agent():
 
         # ---------------------------- update actor ---------------------------- #
         # Compute actor loss
-        actions_pred = np.zeros((BATCH_SIZE, asize*nag)) #initialize actions to 0
-        for i in range(self.num_agents):
-            actions_pred[:,i*asize:(i+1)*asize] = self.actor_local(states[i::nag,:]).cpu().data.numpy()
-        actions_pred = torch.from_numpy(actions_pred).float().to(device)
-        actor_loss = -self.critic_local(states.reshape(BATCH_SIZE,self.full_state_size), actions_pred).mean()
+        actor_loss = -self.critic_local(states.reshape(-1,self.full_state_size), actions_pred).mean()
         # Minimize the loss
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
@@ -146,6 +116,18 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+            
+    def hard_update(self, local_model, target_model):
+        """Hard update model parameters, for initialization
+        θ_target = θ_local
+
+        Params
+        ======
+            local_model: PyTorch model (weights will be copied from)
+            target_model: PyTorch model (weights will be copied to)
+        """
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(local_param.data)
 
 class OUNoise:
     """Ornstein-Uhlenbeck process."""
@@ -168,39 +150,3 @@ class OUNoise:
         dx = self.theta * (self.mu - x) + self.sigma * np.array([random.gauss(0,1) for i in range(len(x))])
         self.state = x + dx
         return self.state
-
-class ReplayBuffer:
-    """Fixed-size buffer to store experience tuples."""
-
-    def __init__(self, action_size, buffer_size, batch_size, seed):
-        """Initialize a ReplayBuffer object.
-        Params
-        ======
-            buffer_size (int): maximum size of buffer
-            batch_size (int): size of each training batch
-        """
-        self.action_size = action_size
-        self.memory = deque(maxlen=buffer_size)  # internal memory (deque)
-        self.batch_size = batch_size
-        self.experience = namedtuple("Experience", field_names=["states", "actions", "reward", "next_states", "done"])
-        self.seed = random.seed(seed)
-    
-    def add(self, states, actions, rewards, next_states, done):
-        """Add a new experience to memory."""
-        e = self.experience(states, actions, rewards, next_states, done)
-        self.memory.append(e)
-    
-    def sample(self):
-        """Randomly sample a batch of experiences from memory."""
-        experiences = random.sample(self.memory, k=self.batch_size)
-        states = torch.from_numpy(np.vstack([e.states for e in experiences if e is not None])).float().to(device)
-        actions = torch.from_numpy(np.vstack([e.actions for e in experiences if e is not None])).float().to(device)
-        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
-        next_states = torch.from_numpy(np.vstack([e.next_states for e in experiences if e is not None])).float().to(device)
-        dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
-
-        return (states, actions, rewards, next_states, dones)
-
-    def __len__(self):
-        """Return the current size of internal memory."""
-        return len(self.memory)
