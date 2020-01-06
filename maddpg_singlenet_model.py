@@ -44,7 +44,7 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     """Critic (Value) Model."""
 
-    def __init__(self, state_size, action_size, seed, fcs1_units=400, fc2_units=300):
+    def __init__(self, state_size, action_size, num_agents, seed, fcs1_units=400, fc2_units=300):
         """Initialize parameters and build model.
         Params
         ======
@@ -58,7 +58,7 @@ class Critic(nn.Module):
         self.seed = torch.manual_seed(seed)
         self.fcs1 = nn.Linear(state_size, fcs1_units)
         self.fc2 = nn.Linear(fcs1_units+action_size, fc2_units)
-        self.fc3 = nn.Linear(fc2_units, 1)
+        self.fc3 = nn.Linear(fc2_units, num_agents)
         self.reset_parameters()
 
     def reset_parameters(self):
