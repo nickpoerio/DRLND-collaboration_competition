@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-BUFFER_SIZE = int(1e5)  # replay buffer size
+BUFFER_SIZE = int(1e6)  # replay buffer size
 BATCH_SIZE = 256        # minibatch size
 GAMMA = 0.95            # discount factor
 TAU = 5e-3              # for soft update of target parameters
@@ -44,8 +44,8 @@ class Agent():
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
 
         # Critic Network (w/ Target Network)
-        self.critic_local = Critic(self.full_state_size, self.full_action_size, n_agents, random_seed).to(device)
-        self.critic_target = Critic(self.full_state_size, self.full_action_size, n_agents, random_seed).to(device)
+        self.critic_local = Critic(self.state_size, self.action_size, n_agents, random_seed).to(device)
+        self.critic_target = Critic(self.state_size, self.action_size, n_agents, random_seed).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
         # Noise process
@@ -106,9 +106,8 @@ class Agent():
         
         
         for i in range(n_agents):
-            actions_next[:,i*a_size:(i+1)*a_size] = self.actor_target(next_states[i::n_agents,:]).cpu().data
-            actions_pred[:,i*a_size:(i+1)*a_size] = self.actor_local(states[i::n_agents,:]).cpu().data
-                
+            actions_next[:,i*a_size:(i+1)*a_size] = self.actor_target(next_states[i::n_agents,:])
+            actions_pred[:,i*a_size:(i+1)*a_size] = self.actor_local(states[i::n_agents,:])
         # ---------------------------- update critic ---------------------------- #
         # Get Q values from target models
         Q_targets_next = self.critic_target(next_states.reshape(-1,self.full_state_size), actions_next)
