@@ -1,13 +1,13 @@
 [//]: # (Image References)
 
 [image1]: DDPG_trained.png "DDPG training"
-[image3]: MADDPG_trained.png "MADDPG training"
+[image2]: MADDPG_trained.png "MADDPG training"
 
 
 # Project 3: Collaboration and competition
 
-For this project I decided to use a canonical DDPG algorithm applied to multiple agens, but also an unconventional version of MADDPG, which turns to be very close to the previous implementation, except for the critic, where a shared state/action space is used in addition to the original DDPG critic.
-This turns to add valuable information without introducing excess feature complexity and consequent difficulty to converge
+For this project I decided to use a canonical DDPG algorithm applied to multiple agents, but also an unconventional version of MADDPG, which turns to be very close to the previous implementation, except for the critic, where a shared state/action space is used in addition to the original DDPG critic.
+This turns to add valuable information without introducing excess feature complexity and consequent difficulty to converge.
 
 ## Learning Algorithm #1: DDPG
 
@@ -46,10 +46,10 @@ that is also visible in the `Tennis.ipynb` file together with a verbose logging 
 
 ## Learning Algorithm #2: MADDPG with shared networks
 
-My first attempts to use a canonical version of MADDPG (with or without shared networks) were insuccessful due to the difficulty of starting learning something overall. What my intuition suggested is that the critic space was now too prone to variance, especially for the Tennis game, where the collaboration effects are quite limited (the actors don't see each other!). Hence I decided to start from the DDPG, changing the critic so that:
+My first attempts to use a canonical version of MADDPG (with or without shared networks) were insuccessful due to the difficulty of starting learning something at all. What my intuition suggested is that the critic space was now too prone to variance, especially for this Tennis game, where the collaboration effects are quite limited (the actors don't see each other!). Hence I decided to start from the DDPG, changing the critic so that:
 
--it outputs 1 value for each agent using 2 equal network branches (in practice, the same critic for each agent)
--it adds a correction contribution built from the last hidden space, shared between the two agents.
+- it outputs 1 value for each agent using 2 equal network branches (in practice, the same critic for each agent)
+- it adds a correction contribution built from the last hidden space, shared between the two agents.
 
 This way, the critic parameters increase is very limited and te results effectively show a slight improvement with respect to the DDPG. More importantly, the learning process has appeared to be much more stable, as well as the sensitivity to the hyperparameters has been reduced.
 I could use the same values used in DDPG, except for GAMMA = .99 which reduces the greediness (DDPG was not learning at all with this choice).
@@ -73,6 +73,6 @@ It was evident that at a certain point increasing the buffer size was not helpfu
 
 About the network side, I'd like to test also a solution using just the shared space for the last layer in the critic: convergence might be more difficult, but then the learning slope could be steeper.
 
-Last but not least, I'd like to compare the performance of my MADDPG with Evolutionary strategy
+Last but not least, I'd like to compare the performance of my MADDPG with Evolutionary strategy.
 
 
